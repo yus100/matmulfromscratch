@@ -1,0 +1,18 @@
+__global__ void matmul_kernel(float* A, float* B, float* C, int M, int K, int N) {
+    // Figure out which element this thread is responsible for
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    
+    // Make sure we don't go out of bounds
+    if (row < M && col < N) {
+        float sum = 0.0f;
+        
+        // Do the dot product for this element
+        for (int k = 0; k < K; k++) {
+            sum += A[row * K + k] * B[k * N + col];
+        }
+        
+        // Store the result
+        C[row * N + col] = sum;
+    }
+}
