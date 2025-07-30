@@ -1,17 +1,51 @@
+#define TILE_SIZE 16
+
 __global__ void matmul_kernel(float* A, float* B, float* C, int M, int K, int N) {
+    // Shared memory for tiles
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+    
     // Figure out which element this thread is responsible for
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     
-    // Make sure we don't go out of bounds
-    if (row < M && col < N) {
-        float sum = 0.0f;
-        
-        // Do the dot product for this element
-        for (int k = 0; k < K; k++) {
-            sum += A[row * K + k] * B[k * N + col];
+    // Local thread indices for shared memory
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    
+    float sum = 0.0f;
+    
+    // Loop over tiles along the K dimension
+    for (int tile = 0; tile < (K + TILE_SIZE - 1) / TILE_SIZE; tile++) {
+        // Load tile of A into shared memory
+        int a_col = tile * TILE_SIZE + tx;
+        if (row < M && a_col < K) {
+            As[ty][tx] = A[row * K + a_col];
+        } else {
+            As[ty][tx] = 0.0f;  // padding for out-of-bounds
         }
         
+        // Load tile of B into shared memory
+        int b_row = tile * TILE_SIZE + ty;
+        if (b_row < K && col < N) {
+            Bs[ty][tx] = B[b_row * N + col];
+        } else {
+            Bs[ty][tx] = 0.0f;  // padding for out-of-bounds
+        }
+        
+        // Wait for all threads to finish loading
+        __syncthreads();
+        
+        // Do the dot product for this tile
+        for (int k = 0; k < TILE_SIZE; k++) {
+            sum += As[ty][k] * Bs[k][tx];
+        }
+        
+        __syncthreads();
+    }
+    
+    // out of bounds when storing check
+    if (row < M && col < N) {
         // Store the result
         C[row * N + col] = sum;
     }
